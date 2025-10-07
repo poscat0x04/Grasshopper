@@ -1,4 +1,5 @@
 use crate::udp::{BufferedSocket, Packet};
+use argh::{from_env, FromArgs};
 use indexmap::map::Entry;
 use indexmap::IndexMap;
 use polling::PollMode::Edge;
@@ -9,7 +10,6 @@ use rand::SeedableRng;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
-use argh::{from_env, FromArgs};
 
 mod udp;
 mod utils;
@@ -18,11 +18,10 @@ const HOP_INTERVAL_SECS: u64 = 120;
 const CONN_TIMEOUT_SECS: u64 = 240;
 
 #[derive(FromArgs, Debug)]
-
 #[argh(description = "udp port-hopping middleware for combating ISP UDP throttling")]
 struct TopLevelCommand {
     #[argh(subcommand)]
-    inner: SubCommand
+    inner: SubCommand,
 }
 
 #[derive(FromArgs, Debug)]
@@ -35,12 +34,8 @@ enum SubCommand {
 fn main() -> io::Result<()> {
     let cmd: TopLevelCommand = from_env();
     match cmd.inner {
-        SubCommand::Client(opts) => {
-            client_main(&opts)
-        }
-        SubCommand::Server(opts) => {
-            server_main(&opts)
-        }
+        SubCommand::Client(opts) => client_main(&opts),
+        SubCommand::Server(opts) => server_main(&opts),
     }
 }
 
@@ -130,7 +125,7 @@ fn client_main(opts: &ClientOpts) -> io::Result<()> {
 
     let mut ds_sock = BufferedSocket::new(opts.listen_addr.ip(), opts.listen_addr.port())?;
     unsafe {
-        poller.add_with_mode(&ds_sock, Event::new(usize::MAX, true, true), Edge)?;
+        poller.add_with_mode(&ds_sock, Event::new(usize::MAX - 1, true, true), Edge)?;
     }
 
     loop {
@@ -159,7 +154,7 @@ fn client_main(opts: &ClientOpts) -> io::Result<()> {
         // then events
         for event in events.iter() {
             // ds_sock
-            if event.key == usize::MAX {
+            if event.key == usize::MAX - 1 {
                 if event.readable {
                     let r = ds_sock.try_receive(|data, len, src| {
                         let entry = conns.entry(src);
@@ -251,7 +246,7 @@ fn server_main(opts: &ServerOpts) -> io::Result<()> {
         unsafe {
             poller.add_with_mode(
                 &s,
-                Event::new(usize::MAX - ((port - opts.pr_min) as usize), true, true),
+                Event::new(usize::MAX - 1 - ((port - opts.pr_min) as usize), true, true),
                 Edge,
             )?;
         }
@@ -278,7 +273,7 @@ fn server_main(opts: &ServerOpts) -> io::Result<()> {
         // then events
         for event in events.iter() {
             // ds_sock
-            if (usize::MAX - ((opts.pr_max - opts.pr_min) as usize)..=usize::MAX)
+            if (usize::MAX - 1 - ((opts.pr_max - opts.pr_min) as usize)..=usize::MAX - 1)
                 .contains(&event.key)
             {
                 let idx = usize::MAX - event.key;
