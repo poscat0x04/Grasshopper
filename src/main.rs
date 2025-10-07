@@ -16,6 +16,7 @@ mod utils;
 
 const HOP_INTERVAL_SECS: u64 = 120;
 const CONN_TIMEOUT_SECS: u64 = 240;
+const POLLER_TIMEOUT_SECS: u64 = 30;
 
 #[derive(FromArgs, Debug)]
 #[argh(description = "udp port-hopping middleware for combating ISP UDP throttling")]
@@ -109,19 +110,15 @@ impl ShufflingRand {
     }
 }
 
-fn next_deadline() -> Instant {
-    Instant::now()
-        .checked_add(Duration::from_secs(HOP_INTERVAL_SECS))
-        .expect("impossible: Instant overflow")
-}
-
 fn client_main(opts: &ClientOpts) -> io::Result<()> {
     let mut events = Events::new();
     let poller = Poller::new()?;
     let mut conns: IndexMap<SocketAddr, Connection> = IndexMap::new();
     let mut rng = ShufflingRand::new(opts.server_pr_min, opts.server_pr_max);
     let mut us_port = rng.next();
-    let mut hop_deadline: Instant = next_deadline();
+    let mut hop_deadline: Instant = Instant::now()
+        .checked_add(Duration::from_secs(HOP_INTERVAL_SECS))
+        .expect("impossible: Instant overflow");
 
     let mut ds_sock = BufferedSocket::new(opts.listen_addr.ip(), opts.listen_addr.port())?;
     unsafe {
@@ -130,7 +127,7 @@ fn client_main(opts: &ClientOpts) -> io::Result<()> {
 
     loop {
         events.clear();
-        poller.wait(&mut events, None)?;
+        poller.wait(&mut events, Some(Duration::from_secs(POLLER_TIMEOUT_SECS)))?;
         let now = Instant::now();
 
         // first handle timeouts
@@ -148,7 +145,9 @@ fn client_main(opts: &ClientOpts) -> io::Result<()> {
         // then update upstream port we are targeting
         if now > hop_deadline {
             us_port = rng.next();
-            hop_deadline = next_deadline();
+            hop_deadline = hop_deadline
+                .checked_add(Duration::from_secs(HOP_INTERVAL_SECS))
+                .expect("impossible: Instant overflow");
         }
 
         // then events
@@ -255,7 +254,7 @@ fn server_main(opts: &ServerOpts) -> io::Result<()> {
 
     loop {
         events.clear();
-        poller.wait(&mut events, None)?;
+        poller.wait(&mut events, Some(Duration::from_secs(POLLER_TIMEOUT_SECS)))?;
         let now = Instant::now();
 
         // handle timeouts
