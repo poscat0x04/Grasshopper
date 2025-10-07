@@ -275,7 +275,7 @@ fn server_main(opts: &ServerOpts) -> io::Result<()> {
             if (usize::MAX - 1 - ((opts.pr_max - opts.pr_min) as usize)..=usize::MAX - 1)
                 .contains(&event.key)
             {
-                let idx = usize::MAX - event.key;
+                let idx = usize::MAX - 1 - event.key;
                 let ds_sock = &mut ds_socks[idx];
 
                 if event.readable {
