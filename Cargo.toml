@@ -1,0 +1,15 @@
+[package]
+name = "Grasshopper"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "grhp"
+path = "src/main.rs"
+
+[dependencies]
+polling = { version = "3.11" }
+ringbuffer = "0.16"
+rand = "0.9"
+indexmap = "2.11"
+argh = "0.1"
