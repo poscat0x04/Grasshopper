@@ -62,7 +62,7 @@ impl BufferedSocket {
             // silently drops packet
             // TODO: proper handling (logging etc.)
         } else {
-            self.buffer.enqueue(pkt).expect("impossible: full queue");
+            self.buffer.enqueue(pkt);
         }
     }
 }

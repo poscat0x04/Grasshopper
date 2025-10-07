@@ -10,27 +10,15 @@ use rand::SeedableRng;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
+use args::{ClientOpts, ServerOpts, SubCommand, TopLevelCommand};
 
 mod udp;
 mod utils;
+mod args;
 
 const HOP_INTERVAL_SECS: u64 = 120;
 const CONN_TIMEOUT_SECS: u64 = 240;
 const POLLER_TIMEOUT_SECS: u64 = 30;
-
-#[derive(FromArgs, Debug)]
-#[argh(description = "udp port-hopping middleware for combating ISP UDP throttling")]
-struct TopLevelCommand {
-    #[argh(subcommand)]
-    inner: SubCommand,
-}
-
-#[derive(FromArgs, Debug)]
-#[argh(subcommand)]
-enum SubCommand {
-    Client(ClientOpts),
-    Server(ServerOpts),
-}
 
 fn main() -> io::Result<()> {
     let cmd: TopLevelCommand = from_env();
@@ -44,42 +32,6 @@ fn main() -> io::Result<()> {
 struct Connection {
     timeout: Instant,
     socket: BufferedSocket,
-}
-
-#[derive(FromArgs, Debug)]
-#[argh(subcommand, name = "server")]
-#[argh(description = "starts server side middleware")]
-struct ServerOpts {
-    #[argh(option, short = 'l', long = "listen")]
-    #[argh(description = "the ip address for ports to bind to")]
-    listen_ip: IpAddr,
-    #[argh(option, short = 'm', long = "min")]
-    #[argh(description = "lower bound (inclusive) of the port range")]
-    pr_min: u16, // port range min
-    #[argh(option, short = 'M', long = "max")]
-    #[argh(description = "upper bound (inclusive) of the port range")]
-    pr_max: u16, // port range max
-    #[argh(description = "the upstream server to forward to")]
-    #[argh(option, short = 'u', long = "upstream")]
-    us_addr: SocketAddr,
-}
-
-#[derive(FromArgs, Debug)]
-#[argh(subcommand, name = "client")]
-#[argh(description = "starts client side middleware")]
-struct ClientOpts {
-    #[argh(option, short = 'l', long = "listen")]
-    #[argh(description = "the address for accepting client traffic")]
-    listen_addr: SocketAddr, // downstream socket addr
-    #[argh(option, short = 's', long = "server")]
-    #[argh(description = "ip of the server side middleware")]
-    server_ip: IpAddr,
-    #[argh(option, short = 'm', long = "min")]
-    #[argh(description = "lower bound (inclusive) of the port range")]
-    server_pr_min: u16,
-    #[argh(option, short = 'M', long = "max")]
-    #[argh(description = "upper bound (inclusive) of the port range")]
-    server_pr_max: u16,
 }
 
 struct ShufflingRand {
