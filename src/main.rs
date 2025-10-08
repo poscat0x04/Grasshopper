@@ -19,7 +19,7 @@ mod udp;
 type SrcAddr = SocketAddr;
 type DsSockIdx = usize;
 
-const HOP_INTERVAL_SECS: u64 = 10;
+const HOP_INTERVAL_SECS: u64 = 60;
 const CONN_TIMEOUT_SECS: u64 = 240;
 const POLLER_TIMEOUT_SECS: u64 = 1;
 
@@ -82,7 +82,7 @@ fn client_main(opts: &ClientOpts) -> ah::Result<()> {
         .context("creating downstream socket")?;
     unsafe {
         poller
-            .add_with_mode(&ds_sock, Event::new(KEY_MAX, true, false), Edge)
+            .add_with_mode(&ds_sock, Event::new(KEY_MAX, true, true), Edge)
             .context("declaring interest in ds_sock's readable events")?;
     }
 
@@ -129,19 +129,8 @@ fn client_main(opts: &ClientOpts) -> ah::Result<()> {
                         match entry {
                             // established connection
                             Entry::Occupied(mut oe) => {
-                                let us_sock_idx = oe.index();
                                 let conn = oe.get_mut();
-                                let prev_writable = conn.socket.writable;
                                 conn.socket.send_one(pkt)?;
-                                if prev_writable && !conn.socket.writable {
-                                    unsafe {
-                                        poller.add_with_mode(
-                                            &conn.socket,
-                                            Event::new(us_sock_idx, false, true),
-                                            Oneshot,
-                                        )?;
-                                    }
-                                }
                             }
 
                             // new connection
@@ -157,22 +146,12 @@ fn client_main(opts: &ClientOpts) -> ah::Result<()> {
                                 unsafe {
                                     poller.add_with_mode(
                                         &sock,
-                                        Event::new(ve.index(), true, false),
+                                        Event::new(ve.index(), true, true),
                                         Edge,
                                     )?;
                                 }
 
-                                let prev_writable = sock.writable;
                                 sock.send_one(pkt)?;
-                                if prev_writable && !sock.writable {
-                                    unsafe {
-                                        poller.add_with_mode(
-                                            &sock,
-                                            Event::new(ve.index(), false, true),
-                                            Oneshot,
-                                        )?;
-                                    }
-                                }
 
                                 let conn = Connection {
                                     timeout: now
@@ -213,17 +192,7 @@ fn client_main(opts: &ClientOpts) -> ah::Result<()> {
                         if src.ip() == opts.server_ip
                             && (opts.server_pr_min..=opts.server_pr_max).contains(&src.port())
                         {
-                            let prev_writable = ds_sock.writable;
                             ds_sock.send_one(pkt)?;
-                            if prev_writable && !ds_sock.writable {
-                                unsafe {
-                                    poller.add_with_mode(
-                                        &ds_sock,
-                                        Event::new(KEY_MAX, false, true),
-                                        Oneshot,
-                                    )?;
-                                }
-                            }
                         }
                         Ok(())
                     })?;
@@ -232,15 +201,6 @@ fn client_main(opts: &ClientOpts) -> ah::Result<()> {
                 if event.writable {
                     conn.socket.writable = true;
                     conn.socket.try_send()?;
-                    if !conn.socket.writable {
-                        unsafe {
-                            poller.add_with_mode(
-                                &conn.socket,
-                                Event::new(event.key, false, true),
-                                Oneshot,
-                            )?
-                        }
-                    }
                 }
             }
             // else: spurious wakeup, ignored
@@ -303,21 +263,10 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
 
                         match entry {
                             Entry::Occupied(mut oe) => {
-                                let us_sock_idx = oe.index();
                                 let (conn, last_sock_idx) = oe.get_mut();
                                 *last_sock_idx = ds_sock_idx;
 
-                                let prev_writable = conn.socket.writable;
                                 conn.socket.send_one(pkt)?;
-                                if prev_writable && !conn.socket.writable {
-                                    unsafe {
-                                        poller.add_with_mode(
-                                            &conn.socket,
-                                            Event::new(us_sock_idx, false, true),
-                                            Oneshot,
-                                        )?;
-                                    }
-                                }
                             }
 
                             Entry::Vacant(ve) => {
@@ -337,17 +286,7 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
                                     )?;
                                 }
 
-                                let prev_writable = sock.writable;
                                 sock.send_one(pkt)?;
-                                if prev_writable && !sock.writable {
-                                    unsafe {
-                                        poller.add_with_mode(
-                                            &sock,
-                                            Event::new(ve.index(), false, true),
-                                            Oneshot,
-                                        )?;
-                                    }
-                                }
 
                                 let conn = Connection {
                                     timeout: now
@@ -365,15 +304,6 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
                 if event.writable {
                     ds_sock.writable = true;
                     ds_sock.try_send()?;
-                    if !ds_sock.writable {
-                        unsafe {
-                            poller.add_with_mode(
-                                &*ds_sock,
-                                Event::new(event.key, false, true),
-                                Oneshot,
-                            )?;
-                        }
-                    }
                 }
             // us_sock
             } else if let Some((dst, (conn, last_sock_idx))) = conns.get_index_mut(event.key) {
@@ -388,17 +318,7 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
                         if src == opts.us_addr {
                             let ds_sock = &mut ds_socks[*last_sock_idx];
 
-                            let prev_writable = ds_sock.writable;
                             ds_sock.send_one(pkt)?;
-                            if prev_writable && !ds_sock.writable {
-                                unsafe {
-                                    poller.add_with_mode(
-                                        &*ds_sock,
-                                        Event::new(KEY_MAX - *last_sock_idx, false, true),
-                                        Oneshot,
-                                    )?;
-                                }
-                            }
                         }
                         Ok(())
                     })?;
@@ -407,15 +327,6 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
                 if event.writable {
                     conn.socket.writable = true;
                     conn.socket.try_send()?;
-                    if !conn.socket.writable {
-                        unsafe {
-                            poller.add_with_mode(
-                                &conn.socket,
-                                Event::new(event.key, false, true),
-                                Oneshot,
-                            )?
-                        }
-                    }
                 }
             }
             // spurious wakeup, ignored
