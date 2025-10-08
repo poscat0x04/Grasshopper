@@ -5,6 +5,7 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 const UDP_BUF_SIZE: usize = 1452;
+const RING_BUF_SIZE: usize = 16;
 type UBuf = [u8; UDP_BUF_SIZE];
 
 #[derive(Debug, Clone)]
@@ -18,7 +19,7 @@ pub struct Packet<const N: usize = UDP_BUF_SIZE> {
 pub struct BufferedSocket {
     pub socket: UdpSocket,
     pub writable: bool,
-    pub buffer: ConstGenericRingBuffer<Packet, 64>,
+    pub buffer: ConstGenericRingBuffer<Packet, RING_BUF_SIZE>,
 }
 
 impl BufferedSocket {
@@ -103,12 +104,12 @@ impl BufferedSocket {
         }
     }
 
-    fn try_enqueue(&mut self, pkt: Packet) -> bool {
+    fn try_enqueue(&mut self, pkt: Packet) {
         if self.buffer.is_full() {
-            false
+            // TODO: proper logging
+            eprintln!("waring: packet dropped due to buffer overflow")
         } else {
             self.buffer.enqueue(pkt);
-            true
         }
     }
 }
