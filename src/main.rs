@@ -17,6 +17,7 @@ mod args;
 mod udp;
 
 type SrcAddr = SocketAddr;
+type DsSockIdx = usize;
 
 const HOP_INTERVAL_SECS: u64 = 120;
 const CONN_TIMEOUT_SECS: u64 = 240;
@@ -251,7 +252,7 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
     let mut events = Events::new();
     let poller = Poller::new()?;
     // additional usize for the index of the last ds_sock that sent message to
-    let mut conns: IndexMap<SocketAddr, (Connection, usize)> = IndexMap::new();
+    let mut conns: IndexMap<SocketAddr, (Connection, DsSockIdx)> = IndexMap::new();
     let mut ds_socks: Vec<BufferedSocket> =
         Vec::with_capacity((opts.pr_max - opts.pr_min + 1) as _);
 
