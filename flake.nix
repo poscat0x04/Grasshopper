@@ -66,7 +66,7 @@
                 ./Cargo.lock
               ];
             };
-            cargoLock.lockFIle = ./Cargo.lock;
+            cargoLock.lockFile = ./Cargo.lock;
           };
       };
     };
