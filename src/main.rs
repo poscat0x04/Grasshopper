@@ -19,7 +19,7 @@ mod udp;
 type SrcAddr = SocketAddr;
 type DsSockIdx = usize;
 
-const HOP_INTERVAL_SECS: u64 = 120;
+const HOP_INTERVAL_SECS: u64 = 10;
 const CONN_TIMEOUT_SECS: u64 = 240;
 const POLLER_TIMEOUT_SECS: u64 = 1;
 
