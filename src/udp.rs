@@ -1,5 +1,6 @@
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use std::io;
+use std::io::ErrorKind::WouldBlock;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
@@ -16,6 +17,7 @@ pub struct Packet<const N: usize = UDP_BUF_SIZE> {
 #[derive(Debug)]
 pub struct BufferedSocket {
     pub socket: UdpSocket,
+    pub writable: bool,
     pub buffer: ConstGenericRingBuffer<Packet, 64>,
 }
 
@@ -24,45 +26,89 @@ impl BufferedSocket {
         let socket = UdpSocket::bind((ip, port))?;
         socket.set_nonblocking(true)?;
         let buffer = ConstGenericRingBuffer::new();
-        Ok(BufferedSocket { socket, buffer })
+        Ok(BufferedSocket {
+            socket,
+            buffer,
+            writable: true,
+        })
     }
 
-    pub fn send_one(&mut self, pkt: &Packet) -> io::Result<()> {
-        let _bytes = self.socket.send_to(&pkt.data[0..pkt.len], pkt.dst)?;
-        Ok(())
-    }
-
-    pub fn recv_one(&mut self) -> io::Result<(UBuf, usize, SocketAddr)> {
-        let mut data = [0; UDP_BUF_SIZE];
-        let (bytes, addr) = self.socket.recv_from(&mut data)?;
-        Ok((data, bytes, addr))
-    }
-
-    pub fn try_send(&mut self) -> io::Result<usize> {
-        let mut total_sent = 0;
-        while let Some(pkt) = self.buffer.dequeue() {
-            self.send_one(&pkt)?;
-            total_sent += 1;
+    /// try to send a single packet and update the writable state of the socket
+    /// buffers the packet if it's not writable
+    pub fn send_one(&mut self, pkt: Packet) -> io::Result<()> {
+        if self.writable {
+            let r = self.socket.send_to(&pkt.data[0..pkt.len], pkt.dst);
+            match r {
+                Ok(_bytes) => Ok(()),
+                Err(ref e) if e.kind() == WouldBlock => {
+                    self.writable = false;
+                    self.try_enqueue(pkt);
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            self.try_enqueue(pkt);
+            Ok(())
         }
-        Ok(total_sent)
     }
 
-    pub fn try_receive(
-        &mut self,
+    /// try to send all packets in the buffer (handles EAGAIN)
+    pub fn try_send(&mut self) -> io::Result<()> {
+        if self.writable {
+            let r: io::Result<()> = {
+                while let Some(pkt) = self.buffer.peek() {
+                    self.socket.send_to(&pkt.data[0..pkt.len], pkt.dst)?;
+                    self.buffer.dequeue();
+                }
+                Ok(())
+            };
+            match r {
+                Ok(()) => Ok(()),
+                Err(ref e) if e.kind() == WouldBlock => {
+                    self.writable = false;
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn receive_(
+        &self,
         mut cb: impl FnMut(UBuf, usize, SocketAddr) -> io::Result<()>,
     ) -> io::Result<()> {
         loop {
-            let (data, len, src) = self.recv_one()?;
+            let mut data = [0; UDP_BUF_SIZE];
+            let (len, src) = self.socket.recv_from(&mut data)?;
             cb(data, len, src)?
         }
     }
 
-    pub fn try_enqueue(&mut self, pkt: Packet) {
+    /// receive packets until there's no packet left and hits EAGAIN
+    /// returns `Ok(())` if the error is EAGAIN and passes the error otherwise
+    pub fn receive(
+        &self,
+        cb: impl FnMut(UBuf, usize, SocketAddr) -> io::Result<()>,
+    ) -> io::Result<()> {
+        let r = self.receive_(cb);
+        match r {
+            Ok(()) => {
+                panic!("impossible: infinite loop returns")
+            }
+            Err(ref e) if e.kind() == WouldBlock => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn try_enqueue(&mut self, pkt: Packet) -> bool {
         if self.buffer.is_full() {
-            // silently drops packet
-            // TODO: proper handling (logging etc.)
+            false
         } else {
             self.buffer.enqueue(pkt);
+            true
         }
     }
 }
