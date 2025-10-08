@@ -40,7 +40,7 @@ struct Connection {
 }
 
 struct ShufflingRand {
-    l: Box<[u16]>,
+    range_values: Box<[u16]>,
     len: usize,
     step: usize, // step in rotation
     rng: SmallRng,
@@ -48,9 +48,9 @@ struct ShufflingRand {
 
 impl ShufflingRand {
     fn new(min: u16, max: u16) -> Self {
-        let l: Box<[u16]> = (min..=max).collect::<Vec<u16>>().into_boxed_slice();
+        let range_values: Box<[u16]> = (min..=max).collect::<Vec<u16>>().into_boxed_slice();
         ShufflingRand {
-            l,
+            range_values,
             len: (max - min + 1) as _,
             step: 0,
             rng: SmallRng::from_os_rng(),
@@ -59,9 +59,9 @@ impl ShufflingRand {
 
     fn next(&mut self) -> u16 {
         if self.step == 0 {
-            self.l.shuffle(&mut self.rng)
+            self.range_values.shuffle(&mut self.rng)
         }
-        let r = self.l[self.step];
+        let r = self.range_values[self.step];
         self.step = (self.step + 1) % self.len;
         r
     }
@@ -369,7 +369,7 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
                         unsafe {
                             poller.add_with_mode(
                                 &*ds_sock,
-                                Event::new(KEY_MAX, false, true),
+                                Event::new(event.key, false, true),
                                 Oneshot,
                             )?;
                         }
@@ -394,7 +394,7 @@ fn server_main(opts: &ServerOpts) -> ah::Result<()> {
                                 unsafe {
                                     poller.add_with_mode(
                                         &*ds_sock,
-                                        Event::new(KEY_MAX, false, true),
+                                        Event::new(KEY_MAX - *last_sock_idx, false, true),
                                         Oneshot,
                                     )?;
                                 }
