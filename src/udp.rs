@@ -5,7 +5,7 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 const UDP_BUF_SIZE: usize = 1452;
-const RING_BUF_SIZE: usize = 16;
+const RING_BUF_SIZE: usize = 64;
 type UBuf = [u8; UDP_BUF_SIZE];
 
 #[derive(Debug, Clone)]
